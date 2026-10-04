@@ -94,6 +94,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_vpnhide:
+        description: "启用 VPNhide 内核后端（builtin 内置集成）"
+        required: false
+        type: boolean
+        default: false
       cve_2026_43499_patch:
         description: "应用 CVE-2026-43499 rtmutex 修复链"
         required: false
@@ -134,6 +139,10 @@ on:
         type: boolean
         default: false
       use_networking:
+        required: false
+        type: boolean
+        default: false
+      use_vpnhide:
         required: false
         type: boolean
         default: false
@@ -237,6 +246,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel || false }}
       use_nomount: ${{ inputs.use_nomount || false }}
       use_networking: ${{ inputs.use_networking || false }}
+      use_vpnhide: ${{ inputs.use_vpnhide || false }}
       cve_2026_43499_patch: ${{ inputs.cve_2026_43499_patch }}
       export_susfs_patches: ${{ inputs.export_susfs_patches || false }}
       supp_op: false
