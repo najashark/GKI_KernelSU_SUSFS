@@ -849,51 +849,47 @@ jobs:
             echo "CONFIG_NOMOUNT=y 已存在，跳过"
           fi
 
-      - name: 集成 VPNhide 内核后端
+      - name: 集成 VPNhide Next 内核后端 (kpatch)
         if: inputs.use_vpnhide
         working-directory: ${{ env.KERNEL_ROOT }}/common
         run: |
-          # 集成 okhsunrog/vpnhide 的 builtin（in-tree）后端：与 kmod .ko 相同的隐藏覆盖，
-          # 但通过源码调用点补丁直接编译进内核（CONFIG_VPNHIDE=y），不依赖 kprobes / 可加载模块。
+          # 集成 soranerai/vpnhide_next 的 kpatch 静态后端：驱动拷入 security/vpnhide，
+          # 结构化注入各调用点，配合 CONFIG_VPNHIDE=y 编译进内核（无 .ko、无 kretprobe）。
           # 与 NoMount 一样必须在「生成 SUSFS 集成补丁」之后运行，避免改动被计入 susfs.patch；
           # 并在「备份基准 defconfig」之后追加 CONFIG，确保 6.1+ 的 bazel fragment diff 能捕获。
           set -euo pipefail
           KMI="${{ inputs.android_version }}-${{ inputs.kernel_version }}"
           case "$KMI" in
             android12-5.10|android13-5.15|android14-6.1|android15-6.6|android16-6.12) ;;
-            *) echo "::error::VPNhide builtin 暂不支持该 KMI: $KMI"; exit 1 ;;
+            *) echo "::error::VPNhide Next kpatch 暂不支持该 KMI: $KMI"; exit 1 ;;
           esac
 
           ok=0
           for i in 1 2 3; do
-            if git clone --depth 1 https://github.com/okhsunrog/vpnhide.git /tmp/vpnhide; then ok=1; break; fi
-            echo "vpnhide 克隆失败，第 $i 次重试"; rm -rf /tmp/vpnhide; sleep 5
+            if git clone --depth 1 https://github.com/soranerai/vpnhide_next_backend.git /tmp/vpnhide_next_backend; then ok=1; break; fi
+            echo "vpnhide_next_backend 克隆失败，第 $i 次重试"; rm -rf /tmp/vpnhide_next_backend; sleep 5
           done
-          [ "$ok" = "1" ] || { echo "::error::vpnhide 克隆失败"; exit 1; }
-          VPH_COMMIT=$(git -C /tmp/vpnhide rev-parse --short HEAD)
-          echo "VPNhide 仓库 commit: $VPH_COMMIT，$(python3 --version 2>&1)"
+          [ "$ok" = "1" ] || { echo "::error::vpnhide_next_backend 克隆失败"; exit 1; }
+          VPH_COMMIT=$(git -C /tmp/vpnhide_next_backend rev-parse --short HEAD)
+          echo "vpnhide_next_backend commit: $VPH_COMMIT，$(python3 --version 2>&1)"
 
-          python3 /tmp/vpnhide/builtin/scripts/integrate.py apply \
-            --kernel "${{ env.KERNEL_ROOT }}/common" \
-            --kmi "$KMI" \
-            --output /tmp/vpnhide-integration
+          bash /tmp/vpnhide_next_backend/kpatch/scripts/apply.sh \
+            "${{ env.KERNEL_ROOT }}/common" \
+            "$KMI"
 
-          if [ ! -f security/vpnhide/core.c ] || [ ! -f include/linux/vpnhide.h ]; then
-            echo "::error::VPNhide 集成失败：驱动文件缺失"
+          if [ ! -d security/vpnhide ] || [ ! -f include/linux/vpnhide.h ]; then
+            echo "::error::VPNhide Next 集成失败：驱动文件缺失"
             exit 1
           fi
-          sed -n '1,60p' /tmp/vpnhide-integration/report.md || true
 
-          # 启用 VPNhide defconfig（幂等，在 defconfig 备份之后追加以被 fragment diff 捕获）
-          for cfg in CONFIG_VPNHIDE=y CONFIG_VPNHIDE_FS_HIDING=y; do
-            if grep -q "^${cfg}$" "$DEFCONFIG"; then
-              echo "${cfg} 已存在，跳过"
-            else
-              echo "${cfg}" >> "$DEFCONFIG"
-              echo "已启用 ${cfg}"
-            fi
-          done
-          echo "VPNhide builtin 集成完成 ($KMI, vpnhide@$VPH_COMMIT)"
+          # 启用 defconfig（幂等，在 defconfig 备份之后追加以被 fragment diff 捕获）
+          if grep -q '^CONFIG_VPNHIDE=y$' "$DEFCONFIG"; then
+            echo "CONFIG_VPNHIDE=y 已存在，跳过"
+          else
+            echo "CONFIG_VPNHIDE=y" >> "$DEFCONFIG"
+            echo "已启用 CONFIG_VPNHIDE=y"
+          fi
+          echo "VPNhide Next kpatch 集成完成 ($KMI, backend@$VPH_COMMIT)"
 
       - name: 集成 Droidspaces 支持
         if: inputs.droidspaces != 'off'

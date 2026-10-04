@@ -95,7 +95,7 @@ on:
         type: boolean
         default: false
       use_vpnhide:
-        description: "启用 VPNhide 内核后端（builtin 内置集成）"
+        description: "启用 VPNhide Next 内核后端（kpatch 内置集成）"
         required: false
         type: boolean
         default: false
