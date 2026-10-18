@@ -570,13 +570,9 @@ jobs:
 
           case "$variant_input" in
             "Official"|"ReSukiSU")
-              # BakaSU/ReSukiSU 的 setup.sh 只把第一个位置参数当 ref（历史写法 "-s main" 实为
-              # checkout "-s" 失败后落到默认分支 main）。指定 ksu_ref 时直接传 ref。
-              if [ -n "${KSU_REF:-}" ]; then
-                BRANCH="$KSU_REF"
-              else
-                BRANCH="-s main"
-              fi
+              # 注意：这里的 -s 是 bash 的「从 stdin 读脚本」标志，ref 作为脚本的 $1 传入；
+              # 不能写成 BRANCH="<ref>"（会变成 `bash <ref>` → exit 127）。
+              BRANCH="-s ${KSU_REF:-main}"
               ;;
             "SukiSU")
               if [ "${{ inputs.enable_susfs }}" = "false" ]; then
