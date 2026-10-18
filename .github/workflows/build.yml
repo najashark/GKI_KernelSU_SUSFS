@@ -25,6 +25,13 @@ on:
       ksu_variant:
         required: true
         type: string
+      # 可选：指定 KernelSU 分支/提交（留空 = main）。
+      # ReSukiSU main 自 2026-10-10 起自带 susfs 停摆守卫（susfs_compat.mk 的
+      # $(error Please wait susfs update.)），需配合 sync-susfs 分支才能编译 SUSFS。
+      ksu_ref:
+        required: false
+        type: string
+        default: ''
       ksu_mode:
         required: false
         type: string
@@ -556,12 +563,20 @@ jobs:
       - name: 确定 KernelSU 分支
         id: ksu-branch
         if: inputs.ksu_mode != '禁用KSU'
+        env:
+          KSU_REF: ${{ inputs.ksu_ref }}
         run: |
           variant_input="${{ inputs.ksu_variant }}"
 
           case "$variant_input" in
             "Official"|"ReSukiSU")
-              BRANCH="-s main"
+              # BakaSU/ReSukiSU 的 setup.sh 只把第一个位置参数当 ref（历史写法 "-s main" 实为
+              # checkout "-s" 失败后落到默认分支 main）。指定 ksu_ref 时直接传 ref。
+              if [ -n "${KSU_REF:-}" ]; then
+                BRANCH="$KSU_REF"
+              else
+                BRANCH="-s main"
+              fi
               ;;
             "SukiSU")
               if [ "${{ inputs.enable_susfs }}" = "false" ]; then
@@ -650,6 +665,23 @@ jobs:
           else
             echo "KSU_LATEST_COMMIT_DATE=未知" >> $GITHUB_ENV
           fi
+
+      - name: 校验 KernelSU 检出 (ksu_ref)
+        if: inputs.ksu_mode != '禁用KSU' && inputs.ksu_ref != ''
+        working-directory: ${{ env.KERNEL_ROOT }}/KernelSU
+        env:
+          WANT: ${{ inputs.ksu_ref }}
+        run: |
+          echo "KernelSU HEAD: $(git rev-parse --short HEAD) / branch: $(git rev-parse --abbrev-ref HEAD)"
+          if ! git rev-parse --verify --quiet "${WANT}^{commit}" >/dev/null; then
+            echo "::error::ksu_ref=$WANT 无法解析：KernelSU 未切换到该分支/提交"
+            exit 1
+          fi
+          if [ "$(git rev-parse "${WANT}^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::KernelSU HEAD 与 ksu_ref=$WANT 不一致"
+            exit 1
+          fi
+          echo "KernelSU 检出校验通过: $WANT"
 
       - name: 配置 SukiSU 管理器信息
         if: (inputs.ksu_variant == 'SukiSU' || inputs.ksu_variant == 'SukiSU(40726)' || inputs.ksu_variant == 'SukiSU(40548)') && inputs.ksu_mode != '禁用KSU'

@@ -31,6 +31,10 @@ on:
           - SukiSU(40548)
           - ReSukiSU
         default: ReSukiSU
+      ksu_ref:
+        description: "KernelSU 分支/提交 (留空=main；ReSukiSU+SUSFS 需填 sync-susfs)"
+        required: false
+        type: string
       ksu_mode:
         description: "KernelSU / SUSFS 模式"
         required: true
@@ -218,6 +222,7 @@ jobs:
       os_patch_level: ${{ inputs.os_patch_level }}
       revision: "r1"
       ksu_variant: ${{ inputs.kernelsu_variant }}
+      ksu_ref: ${{ inputs.ksu_ref || '' }}
       version: ${{ inputs.version || '' }}
       build_time: ${{ inputs.build_time || '' }}
       use_zram: ${{ inputs.use_zram }}
