@@ -92,8 +92,8 @@ if [[ "$ANDROID_VERSION" == "android13" && "$KERNEL_VERSION" == "5.15" ]]; then
   fi
   if [[ "$OS_PATCH_LEVEL" == "lts" ]]; then
     echo "临时调整 Android 13 5.15 LTS 头文件上下文"
-    sed -i '/^#include <trace\/hooks\/blk.h>$/d' fs/namespace.c
-    sed -i '/^#include <trace\/hooks\/mm.h>$/d' fs/proc/task_mmu.c
+    grep -qF '#include <trace/hooks/blk.h>' "$SUSFS_PATCH" || sed -i '/^#include <trace\/hooks\/blk.h>$/d' fs/namespace.c
+    grep -qF '#include <trace/hooks/mm.h>' "$SUSFS_PATCH" || sed -i '/^#include <trace\/hooks\/mm.h>$/d' fs/proc/task_mmu.c
   fi
 fi
 
@@ -106,7 +106,11 @@ if [[ "$ANDROID_VERSION" == "android14" && "$KERNEL_VERSION" == "6.1" ]]; then
     echo "临时调整 Android 14 6.1 dma-buf.h 上下文"
     sed -i '/^#include <linux\/cpufreq_times.h>$/a #include <linux/dma-buf.h>' fs/proc/base.c
   fi
-  if [[ "$CURRENT_SUB" -ge 157 ]]; then
+  # 2026-11-02 起上游补丁已把 #include <trace/hooks/blk.h> 纳入 hunk 上下文，
+  # 此时删除该 include 会让 hunk #1 整个被拒（fs/namespace.c.rej），
+  # 导致 susfs_def.h 未引入、DEFAULT_KSU_MNT_ID 等标识符全部未声明。
+  # 因此仅当补丁上下文里没有这行时才做临时删除。
+  if [[ "$CURRENT_SUB" -ge 157 ]] && ! grep -qF '#include <trace/hooks/blk.h>' "$SUSFS_PATCH"; then
     echo "临时调整 Android 14 6.1 namespace.c 上下文"
     sed -i '/^#include <trace\/hooks\/blk.h>$/d' fs/namespace.c
   fi
@@ -143,6 +147,14 @@ if grep -q '^ static int thaw_super_locked' "$SUSFS_PATCH" \
 fi
 
 patch -p1 < "$SUSFS_PATCH" || true
+
+# 快速失败：hunk #1 若被拒，namespace.c 就少了 susfs_def.h 头文件块，
+# 编译期只会报一堆未声明标识符（DEFAULT_KSU_MNT_ID、susfs_is_current_ksu_domain…），
+# 与其浪费 12 分钟编译，不如在这里直接失败。
+if grep -qF 'susfs_def.h' "$SUSFS_PATCH" && ! grep -qF 'susfs_def.h' fs/namespace.c; then
+  echo "::error::SUSFS 主补丁未插入 namespace.c 的 susfs_def.h 头文件块（hunk #1 被拒）"
+  exit 1
+fi
 
 # 为尚未提供 SU 会话 FD 接口的 SukiSU/ReSukiSU 恢复旧版 exec hook 行为
 EXEC_HELPER=""
