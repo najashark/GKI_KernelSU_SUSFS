@@ -156,6 +156,19 @@ if grep -qF 'susfs_def.h' "$SUSFS_PATCH" && ! grep -qF 'susfs_def.h' fs/namespac
   exit 1
 fi
 
+# SUSFS 2026-11 版把两个 selinux cred helper 留给「调用它们的新版 KernelSU」；
+# ReSukiSU/BakaSU 不调用，clang -Werror=unused-function 会直接编译失败。
+# 标记 __maybe_unused（仅 static 定义处），对实际行为无影响。
+if [[ -f fs/susfs.c ]]; then
+  sed -i -E 's/^static (struct cred \*susfs_switch_to_ksu_domain\(void\))/static __maybe_unused \1/' fs/susfs.c
+  sed -i -E 's/^static (void susfs_restore_creds\(struct cred \*orig_cred\))/static __maybe_unused \1/' fs/susfs.c
+  if grep -qE '^static (struct cred \*susfs_switch_to_ksu_domain|void susfs_restore_creds)' fs/susfs.c; then
+    echo "::warning::susfs.c 的 unused helper 未被标记，编译可能因 -Werror 失败"
+  else
+    echo "已标记 susfs.c 中未使用的 cred helper 为 __maybe_unused"
+  fi
+fi
+
 # 为尚未提供 SU 会话 FD 接口的 SukiSU/ReSukiSU 恢复旧版 exec hook 行为
 EXEC_HELPER=""
 if [[ "$KSU_VARIANT" == SukiSU* || "$KSU_VARIANT" == "ReSukiSU" ]]; then
